@@ -1,0 +1,575 @@
+@{
+    ViewBag.Title = (ViewBag.Edit ? "Edit" : (ViewBag.Live ? "View" : "Preview")) + " report: " + ViewBag.Path;
+    ViewBag.TitleIcon = (ViewBag.Edit ? "pencil-square-o" : "line-chart");
+
+}
+
+@section head {
+    <script type="text/javascript">
+        CloudBI = {
+            reportId: '@ViewBag.ReportId',
+            reportPath: '@ViewBag.Path',
+            live: @(ViewBag.Live ? "true" : "false"),
+            edit: @(ViewBag.Edit ? "true" : "false"),
+            reportJson: '@Html.Raw(ViewBag.Report)',
+            mkid: function (guid) {
+                return 'z' + guid.replace(/-/g, '_');
+            }
+        };
+        row = 0;//for row number in table
+        function getRowNumber() {
+            row = row + 1;
+            return row;
+        }
+    </script>
+    <script type="text/x-kendo-template" id="templateReportParameter">
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <div class="pull-right">
+                    <div class="btn-group btn-group-xs" role="group" aria-label="...">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <span class="fa fa-bars"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a href="\\#" class="help" data-id="#= Id #" data-bind="events: { click: clickHelp }"><span class="fa fa-question-circle"></span> Help...</a></li>
+                            <li data-bind="visible: edit"><a href="\\#" class="edit" data-id="#= Id #" data-bind="events: { click: clickEdit }"><span class="fa fa-pencil-square"></span> Edit...</a></li>
+                            <li data-bind="visible: edit"><a href="\\#" class="delete" data-id="#= Id #" data-bind="events: { click: clickDelete }"><span class="fa fa-trash-o"></span> Delete</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="fa fa-pencil"></span> # if (RangeFrom) { # #= RangeFromLabel #: <span data-bind="text: parameters.#= RangeFromName #">value</span> <span class="fa fa-arrows-h"></span> # } #
+                #= Label #: <span data-bind="text: parameters.#= Name #">value</span>
+            </div>
+            <div class="panel-body reportParameter">
+                # if (RangeFrom) { #
+                <div id="Range#= Id#" style="width: 100%;" data-bind="value: parameters.range#= Name #, events: {change: onRangeChange}">
+                    <input id="#= RangeFrom #" name="#= RangeFromName #" />
+                    <input id="#= Id #" name="#= Name #" />
+                </div>
+                # } else if(Interaction.ParameterInteraction === 'Hidden') { console.log('hidden type detected prasoon') #
+                <input type="hidden" id="#= Id#" name="#= Name #" data-bind="value: parameters.#= Name #" style="width: 100%;" />
+                # } else if(Interaction.ParameterInteraction === 'Text') { console.log('text type detected') #
+                <input type="text" id="#= Id#" name="#= Name#" class="textBox" data-bind="value: parameters.#= Name #" style="width: 100%" autocomplete="on" required; />
+                # } else { #
+                <input id="#= Id#" name="#= Name #" data-bind="value: parameters.#= Name #" style="width: 100%;" />
+                # } #
+            </div>
+        </div>
+    </script>
+    <script type="text/x-kendo-template" id="OdataUrlTemplate">
+        <input data-bind="value: parameters.url" />
+    </script>
+    <script type="text/x-kendo-template" id="templateTableRow">
+        <tr>
+            <td class="text-left">#= getRowNumber() #</td>
+            # if (RangeFrom) { #
+            <td class="text-left">#= RangeFromLabel #</td>
+            <td class="text-left"><span data-bind="text: parameters.#= RangeFromName #">value</span></td>
+        </tr>
+        <tr>
+            <td class="text-left">#= getRowNumber() #</td>
+            <td class="text-left">#= Label #</td>
+            <td class="text-left"><span data-bind="text: parameters.#= Name #">value</span></td>
+            #} else { #
+            <td class="text-left">#= Name #</td>
+            <td class="text-left"><span data-bind="text: parameters.#= Name #"></span></td>
+            # } #
+        </tr>
+    </script>
+    <script type="text/x-kendo-template" id="templateReportElement">
+        <!-- Help modal -->
+        <div class="modal fade" id="modalHelp#= Id #" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title" id="myModalLabel"><span class="fa fa-bar-chart"></span> #= ElementDefinition.Title #</h4>
+                    </div>
+                    <div class="modal-body">
+                        #= ElementDefinition.Description #
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal"><span class="fa fa-times-circle"></span> Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- style binding doesn't update on jQueryUI resize so we just hard-code the sizes :(. -->
+        <div class="panel panel-default" style="position: absolute; top: #= Y #px; left: #= X #px; width: #= Width #px; height: #= Height #px;">
+            <div class="panel-heading">
+                <div class="pull-right">
+                    <div class="btn-group btn-group-xs" role="group" aria-label="...">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <span class="fa fa-bars"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a href="\\#" class="help" data-id="#= Id #" data-toggle="modal" data-target="\\#modalHelp#= Id #"><span class="fa fa-question-circle"></span> Help...</a></li>
+                            <li data-bind="visible: edit"><a href="\\#" class="edit" data-id="#= Id #" data-bind="events: { click: clickEdit }"><span class="fa fa-pencil-square"></span> Edit...</a></li>
+                            <li data-bind="visible: edit"><a href="\\#" class="delete" data-id="#= Id #" data-bind="events: { click: clickDelete }"><span class="fa fa-trash-o"></span> Delete</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="fa fa-bar-chart"></span> #= ElementDefinition.Title # <!--<span data-bind="text: elements.#= CloudBI.mkid(Id)#.ElementDefinition.Title"></span>-->
+            </div>
+            <div class="panel-body reportElement" id="#= Id #">
+            </div>
+        </div>
+    </script>
+    <script type="text/x-kendo-template" id="templateSubstitutionParameter">
+        <span data-bind="text: parameters.#= placeholder #"></span>
+    </script>
+
+    <script type="text/javascript">
+        // TODO: use template binding!
+        var viewModel = new kendo.observable({
+            edit: @(ViewBag.Edit ? "true" : "false"),
+            parameters: {}, // (name, value) plus (rangeName, [valueFrom, valueTo]) for range tops.
+            elements: {}, // There is now some confusion about whether we're using the data object or this as the canonical record.,
+            gridDataSource: new kendo.data.DataSource({
+                type: "odata-v4",
+                transport: {
+                    read: {
+                        url: "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-01&End=2015-12-31&$top=10&$orderby=monNetTotal"
+                    }
+                },
+                schema: {
+                    data: 'Contents',
+                    total: 'TotalRows'
+                },
+                pageSize: 10
+            }),
+            modalTitle: '',
+            helpText: '',
+            foo: { txt: 'bar' },
+            clickHelp: function (e) {
+                e.preventDefault();
+                var id = CloudBI.mkid($(e.target).attr('data-id'));
+                this.set('modalTitle', this.get('elements.' + id).Title);
+                this.set('helpText', this.get('elements.' + id).Description);
+                $('#modalHelp').modal('toggle');
+            },
+            clickEdit: function (e) {
+                e.preventDefault();
+                var id = CloudBI.mkid($(e.target).attr('data-id'));
+                this.set('modalTitle', this.get('elements.' + id).Title);
+                $('#modalEdit').modal('toggle');
+            },
+            onRangeChange: function (e) {
+                console.log("event fired")
+                // Slap the values out of the array and put them where everyone is expecting them.
+                var bottom = e.sender.element.find('input')[0];
+                this.set('parameters.' + $(bottom).attr('name'), e.value[0]);
+                var top = e.sender.element.find('input')[1];
+                this.set('parameters.' + $(top).attr('name'), e.value[1]);
+                this.set('parameters.url', "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-" + e.value[0] + "&End=2015-12-" + e.value[1] + "&$top=10&$orderby=monNetTotal");
+                this.set('gridDataSource.transport.options.read.url', "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-" + e.value[0] + "&End=2015-12-" + e.value[1] + "&$top=10&$orderby=monNetTotal");
+                $('#grid').data('kendoGrid').dataSource.read()
+                //ideally every url that is using this parameter must change
+            }
+        });
+
+        $(document).ready(function () {
+            // Rotation of parameter show/hide button arrow.
+            $('#parameterToggle').click(function (e) { $(e.target).toggleClass('fa-rotate-90'); });
+
+            // Get the report. TODO: have MVC dump the JSON into the document, or ajax for SPA!
+            if ( typeof(CloudBI) === 'undefined' || !CloudBI.reportJson) {
+                console.error('No reportJson.');
+                return;
+            }
+
+            //var report = JSON.parse(CloudBI.reportJson);
+            var report = JSON.parse(CloudBI.reportJson);
+            renderReport(report);
+        });
+
+        var row = 1;//row in the table
+        renderReport = function (report) {
+            // Create the parameters.
+            // For ranges we draw a control for the parameter that represents the top of the range (.RangeFrom has a value) and not for that which represents the bottom.
+
+            /*
+            Parameters:
+            hidden
+            text: (string, int, float, money)
+            autocomplete: (text)
+            select: (guid, string, int, float, money), (date)
+            multi-select: (guid, string, int, float, money), (date)
+            slider: (int, float, money), (date)
+            range: (int, float, money), (date)
+            */
+
+            var t = kendo.template($("#templateReportParameter").html());
+            var rowTemplate = kendo.template($('#templateTableRow').html());
+            var oDataUrlTemplate = kendo.template($('#OdataUrlTemplate').html());
+            console.log("printing report ...");
+            console.log(report);
+            $(report.Parameters).each(function (i, rParam) {
+                // If we are a range top then set the name of the range bottom parameter as it is needed by the template.
+                var rangeFrom = null;
+                if (rParam.RangeFrom) {
+                    rangeFrom = $.grep(report.Parameters, function (e, i) { return e.Id === rParam.RangeFrom; })[0];
+                    rParam.RangeFromName = rangeFrom.Name;
+                    rParam.RangeFromLabel = rangeFrom.Label;
+                    rangeFrom.Value = cloudBuy.GET[rangeFrom.Name] || rangeFrom.DefaultValue;
+                    // It will be added to the viewModel when it is it's turn to be rParam.
+                }
+
+                // Set parameter value and add to viewModel.
+                rParam.Value = cloudBuy.GET[rParam.Name] || rParam.DefaultValue;
+                viewModel.set('parameters.' + rParam.Name, rParam.Value);
+                // Add special range paramter if required.
+                if (rParam.RangeFrom) {
+                    viewModel.set('parameters.range' + rParam.Name, [rangeFrom.Value, rParam.Value]);
+                    viewModel.set('parameters.url', "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-01&End=2015-12-31&$top=10&$orderby=monNetTotal");
+                }
+                // Add to page -- not for range bottoms.
+                var isRangeBottom = $.grep(report.Parameters, function (e, i) { return e.RangeFrom === rParam.Id; }).length > 0;
+                if (!isRangeBottom) {
+                    // Create the HTML.
+                    var html = t(rParam);
+                    $('#reportParameters').append(html);
+                    var rowHtml = rowTemplate(rParam);
+                    $('#parameterValueTable').append(rowHtml);
+                    console.log("printing rParam.Id");
+                    console.log('#' + rParam.Id);
+                    // Create control
+                    if (rParam.RangeFrom) {
+                        // Min, max, step are the three columns in the row returned by the populator.
+                        $("#Range" + rParam.Id).kendoRangeSlider({
+                            showButtons: false,
+                            min: 1,
+                            max: 30,
+                            smallStep: 1,
+                            largeStep: 5
+                        });
+                        var oDataHtml = oDataUrlTemplate(rParam);
+                        $('#OdataInput').append(oDataHtml);
+                    }
+                    else {
+                        // To do: various controls for the various data types.
+                        switch (rParam.Interaction.ParameterInteraction) {
+                            case "Dropdown":
+                                //dataTextField, dataValueField, read url is returned by the populator
+                                //check if rParam.RangeFrom, then start and end parameters are there in OData Url and it will come from rParam.RangeFromLabel and rParam.Label
+                                //At this point put this element in the list. On getting RangeChange event fired, change the parameters of the elements in the list
+                                $("#" + rParam.Id).kendoDropDownList({
+                                    dataTextField: 'strName',
+                                    dataValueField: 'strName',
+                                    dataSource: {
+                                        datatype: "json",
+                                        transport: {
+                                            read: "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-01&End=2015-12-31&$top=10&$orderby=monNetTotal"
+                                        },
+                                        schema: {
+                                            data: "Contents"
+                                        }
+                                    }
+                                });
+                                viewModel.set('parameters.' + rParam.Name, $("#" + rParam.Id).data('kendoDropDownList').options.dataTextField);
+                                break;
+                            case "Multi-select":
+                                $("#" + rParam.Id).kendoMultiSelect({
+                                    dataTextField: "ProductName",
+                                    dataValueField: "ProductID",
+                                    dataSource: {
+                                        transport: {
+                                            read: {
+                                                dataType: "jsonp",
+                                                url: "https://demos.telerik.com/kendo-ui/service/Products"
+                                            }
+                                        }
+                                    }
+                                });
+                                viewModel.set('parameters.' + rParam.Name, $("#" + rParam.Id).data('kendoMultiSelect').options.dataTextField);
+                                break;
+                            case "Slider":
+                                $("#" + rParam.Id).kendoSlider({
+                                    showButtons: false,
+                                    min: 20,
+                                    max: 40,
+                                    smallStep: 1,
+                                    largeStep: 5
+                                });
+                                break;
+                            case "Text":
+                                console.log("Rendering Text...");
+                                console.log(rParam);
+                                //determine the data type of the Text using ajax request
+                                //render the UI control for Text
+                                break;
+                            case "Autocomplete":
+                                //minLength, dataTextField,read is returned by the populator
+                                //constuct OData Url from the json. populator has to be non null
+                                /*
+                                var baseUrl = dataset.url;//it should come from dataset in the populator
+                                //if(rParam.RangeFrom) {  
+                                //}
+                                //if the dataset has some parameter
+                                */
+                                $("#" + rParam.Id).kendoAutoComplete({
+                                    minLength: 3,
+                                    dataTextField: "strName", // JSON property name to use
+                                    dataSource: new kendo.data.DataSource({
+                                        dataType: "json",
+                                        transport: {
+                                            read: "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-01&End=2015-12-31&$top=10&$orderby=monNetTotal"
+                                        },
+                                        schema: {
+                                            data: 'Contents'
+                                        }
+                                    })
+                                });
+                                viewModel.set('parameters.' + rParam.Name, $("#" + rParam.Id).data('kendoAutoComplete').options.dataTextField);
+                                break;
+                            case "Hidden":
+                                console.log("Hidden");
+                                /*
+                                $("#" + rParam.Id).kendoAutoComplete({
+                                    minLength: 3,
+                                    dataTextField: "strName", // JSON property name to use
+                                    dataSource: new kendo.data.DataSource({
+                                        dataType: "json",
+                                        transport: {
+                                            read: "http://localhost:65141/odata/BI/Preview/DataSource1073872/cloudBuy/dev/PoBySupplier?Start=2015-01-01&End=2015-12-31&$top=10&$orderby=monNetTotal"
+                                        },
+                                        schema: {
+                                            data:'Contents'
+                                        }
+                                    })
+                                });
+                                viewModel.set('parameters.' + rParam.Name, $("#" + rParam.Id).data('kendoAutoComplete').options.dataTextField);*/
+                                break;
+                            default:
+                                throw "error...unknown interaction detected";
+                                break;
+                        }
+                    }
+                }
+            });
+
+            // Substitutions
+            // There are two types:
+            // * a single row where the column names are the placeholder names
+            // * many rows where the first colum is the placeholder name and the second is the value
+            // We support only the first type.
+            // The problem with the second type is that we have to do the query in order to discover the placeholder names
+            // and therefore can't set them up in the observable.
+            $($.grep(report.Datasets, function (e, i) { return e.ForSubstitution; })).each(function (i, ds) {
+                // Add the values to the observable.
+                $(ds.DatasetDefinition.Columns).each(function (j, c) {
+                    viewModel.set('parameters.' + c.Name, c.Name);
+                    console.log('viewModel.set(parameters.' + c.Name + ', ' + 'c.Name));');
+                });
+
+                // Execute the dataset to fetch and set the values.
+                //$.ajax(...)
+            });
+
+            // Create the elements.
+            var t = kendo.template($("#templateReportElement").html());
+            $(report.Elements).each(function (i, rElt) {
+                // Do not place elements that are substituted into other elements.
+                // Only 1 such case so far: array column of type graph.
+                if (rElt.Width == null || rElt.Height == null) {
+                    return;
+                }
+
+                // Width/Height zero means size of viewport.
+                if (rElt.Width === 0) {
+                    rElt.Width = window.innerWidth > 1920 ? 1920 : (window.innerWidth < 640 ? 640 : window.innerWidth - 80);
+                }
+
+                if (rElt.Height === 0) {
+                    rElt.Height = window.innerHeight > 1080 ? 1080 : (window.innerHeight < 640 ? 640 : window.innerHeight - 80);
+                }
+
+                // Create the HTML.
+                var html = t(rElt);
+                $('#reportElements').append(html);
+
+                // Add to the viewmodel.
+                viewModel.set('elements.' + CloudBI.mkid(rElt.Id), rElt);
+
+                // Render component.
+                if (rElt.ElementDefinition.ElementType == 'zGraph') {
+                    setupChart($('#' + rElt.id), rElt.config);
+                }
+                else if (rElt.ElementDefinition.ElementType == 'zArray') {
+                    setupChart($('#' + rElt.id), rElt.config);
+                }
+                else {
+                    //console.error('Unsupported report element type: "' + rElt.ElementDefinition.ElementType + '".');
+                }
+            });
+
+            // Drag and resize.
+            $("#reportElements .panel").resizable({
+                handles: 'all',
+                stop: function (event, ui) {
+                    console.log('Resized to width: ' + ui.size.width + '; height: ' + ui.size.height + ';');
+                    var k = $(ui.element).find('.reportElement').data('kendoChart');
+                    if (k) {
+                        k.options.chartArea.width = ui.size.width;
+                        k.options.chartArea.height = ui.size.height - 50; // allow for the panel-heading.
+                        k.refresh();
+                    }
+                }
+            });
+            $("#reportElements .panel").draggable({
+                handle: '.panel-heading',
+                opacity: 0.5,
+                snap: false,
+                stop: function (event, ui) {
+                    console.log('Dragged to top: ' + ui.position.top + '; left: ' + ui.position.left + ';');
+                }
+            });
+
+            // Bind.
+            if (typeof (viewModel) !== 'undefined' && viewModel) {
+                kendo.bind($('#cloudBI'), viewModel);
+            }
+            else {
+                console.error('Report template has not defined viewModel.');
+            }
+        }
+
+        setupParameterControl = function (div, parameters, parameter) {
+
+        }
+
+
+        setupGrid = function (div, config) {
+                var config1 = {
+                    filterable: {
+                        extra: true,
+                        mode: 'menu'
+                    },
+                    sortable: true,
+                    groupable: true,
+                    resizable: true,
+                    reorderable: true,
+                    pageable: {
+                        //pageSize: 50,
+                        pageSizes: [50, 100, 500, 1000]
+                    },
+                    noRecords: true,
+                    messages: {
+                        noRecords: "There is no data on current page."
+                    }                    
+                }
+                $('#grid').kendoGrid(config1);
+        }
+
+        setupChart = function (div, config) {
+
+        }
+
+        $(document).ready(function() {
+            setupGrid();
+        });
+    </script>
+    <style>
+        input[type=text] + span {
+            padding-right: 30px;
+        }
+
+        input[type=text]:invalid + span:after {
+            position: absolute;
+            content: '✖';
+            padding-left: 5px;
+        }
+
+        input[type=text]:valid + span:after {
+            position: absolute;
+            content: '✓';
+            padding-left: 5px;
+        }
+    </style>
+}
+
+
+@RenderTitle(false)
+
+    <div id="cloudBI">
+
+        <!-- Help modal -->
+        <div class="modal fade" tabindex="-1" role="dialog" id="modalHelp">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title"><span class="fa fa-question-circle"></span> <span data-bind="text: modalTitle"></span></h4>
+                    </div>
+                    <div class="modal-body">
+                        <div data-bind="html: helpText"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit modal -->
+        <div class="modal fade" tabindex="-1" role="dialog" id="modalEdit">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                        <h4 class="modal-title"><span class="fa fa-pencil-square"></span> <span data-bind="text: modalTitle"></span></h4>
+                    </div>
+                    <div class="modal-body">
+                        <p>TODO: editor</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <div class="pull-right">
+                    <div class="btn-group btn-group-xs" role="group" aria-label="..." data-bind="visible: edit">
+                        <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                            <span class="fa fa-bars"></span>
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a href="\\#" class="help" data-bind="events: { click: clickNewParameter }"><span class="fa fa-plus-square"></span> New...</a></li>
+                        </ul>
+                    </div>
+                    <button type="button" id="parameterToggle" class="btn btn-default btn-xs" role="button" data-toggle="collapse" aria-expanded="true" href="#reportParameters" aria-controls="reportParameters"><span class="fa fa-arrow-down"></span></button>
+                </div>
+                <span class="fa fa-sliders"></span> Parameters
+            </div>
+            <form class="panel-body collapse in" id="reportParametersForm" action="www.google.com" method="get">
+                <div class="panel-body collapse in" id="reportParameters">
+                </div>
+                <input type="submit" value="Submit" />
+            </form>
+
+        </div>
+
+        <div class="panel panel-default" style="position:relative;">
+            <div class="panel-heading">
+                <div class="pull-right">
+
+                </div>
+                <span class="fa fa-sliders"></span> ParametersTable
+
+            </div>
+            <div class="table-responsive">
+                <table class="table" id="parameterValueTable">
+                    <tr>
+                        <th>#</th>
+                        <th>Parameter</th>
+                        <th>Value</th>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div id="OdataInput" style="position:relative;"></div>
+        <div id="grid" data-bind="source: gridDataSource" style="position:relative;"></div>
+        <div id="reportElements" style="position:relative;"></div>
+        <!--<script>
+            setupGrid();
+        </script>-->
+    </div>
